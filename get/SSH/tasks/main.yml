@@ -1,0 +1,33 @@
+---
+# tasks file for SSH
+- ec2_instance_facts:
+    region: eu-west-1
+    instance_ids:
+      - "{{ hostvars['localhost'].ids_inst }}"
+  register: lists_facts
+
+- name: Chmod key to EC2
+  command: chmod 700 {{ ec2_key_directory }}key.ppk
+    
+- name: Chmod service get
+  command: chmod 664 {{ service_directory }}get.service
+
+- name: Debug
+  debug:
+    msg: "{{ lists_facts.instances[0].instance_id }}"
+
+- name: Add host to group
+  add_host: name={{ lists_facts.instances[0].public_ip_address }} 
+            groups=My_instance
+            ansible_user=ec2-user
+            ansible_ssh_port=22
+            ansible_ssh_private_key_file={{ ec2_key_directory }}key.ppk
+  with_items: "{{ lists_facts.instances }}"
+
+- name: Wait SSH
+  wait_for:
+    host: "{{ lists_facts.instances[0].public_dns_name }}"
+    port: 22
+    state: started
+  with_items: "{{ lists_facts.instances }}"
+...

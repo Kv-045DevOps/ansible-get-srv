@@ -1,0 +1,47 @@
+---
+- name: Export env
+  sudo: yes
+  shell: "echo 'URL_DB=http://{{ hostvars['localhost'].URL_DB }}:5002/' >> /etc/environment" 
+
+- name: Export env#2
+  sudo: yes
+  shell: "echo $URL_DB"
+  environment:
+    URL_DB: http://{{ hostvars['localhost'].URL_DB }}:5002/
+  register: env_r
+
+- name: Shell source
+  sudo: yes
+  shell: source /etc/environment 
+
+- name: Export env#3
+  sudo: yes
+  command: env
+  register: echo_r
+
+- name: Debug#1
+  debug:
+    msg: "{{ env_r.stdout }}"
+
+- name: Debug
+  debug:
+    msg: "{{ echo_r.stdout }}"
+  
+
+- name: Copy service to EC2
+  copy:
+    src: /root/Scripts/get.service
+    dest: /etc/systemd/system/get.service
+    mode: 0664
+    force: yes
+
+- name: Daemon reload
+  systemd:
+    daemon_reload: yes
+
+- name: Enabled service
+  service: name=get enabled=yes
+
+- name: Started service
+  service: name=get state=started
+...

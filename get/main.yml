@@ -1,0 +1,46 @@
+---
+- hosts: localhost
+  vars_files:
+   - /etc/ansible/vars/vars.yml
+  sudo: yes
+  roles:
+    - create-env
+  tasks:
+    - name: Set ID Instance
+      set_fact:
+        ids_inst: "{{ ec2_instance_get.instances[0].instance_id }}"
+    
+    - name: Set-Fact
+      set_fact:
+        URL_DB: "{{ ec2_instance_get.instances[0].public_ip_address }}"
+    
+    - name: Debug URL_DB
+      debug:
+        msg: "{{ URL_DB }}"
+    
+    - name: Debug ID Instance
+      debug:
+        msg: "{{ ids_inst }}"
+
+
+- hosts: localhost
+  vars_files:
+   - /etc/ansible/vars/vars.yml
+  sudo: yes
+  roles:
+    - SSH
+
+- hosts: My_instance
+  vars_files:
+   - /etc/ansible/vars/vars.yml
+  sudo: yes
+  roles:
+    - install_docker
+
+- hosts: My_instance
+  vars_files:
+   - /etc/ansible/vars/vars.yml
+  sudo: yes
+  roles:
+    - cp_service
+    

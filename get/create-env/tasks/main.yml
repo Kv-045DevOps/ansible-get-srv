@@ -1,0 +1,199 @@
+---
+# tasks file for create-env
+- name: 'create new VPC'
+  ec2_vpc_net:
+    name: "{{ vpc_name }}"
+    cidr_block : "{{ vpc_cidr }}"
+    region : "{{ region }}"
+    state: present
+    aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+    aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+    tags: "{{ aws_tag }}"
+  register: vpc
+
+- name: associate private subnet to the VPC
+  ec2_vpc_subnet:
+    state: present
+    vpc_id: "{{ vpc.vpc.id }}"
+    region: "{{ region }}"
+    cidr: "{{ subnet_cidr_private }}"
+    aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+    aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+    resource_tags: "{{ aws_tag }}"
+  register: subnet_private
+
+- name: associate public subnet to the VPC
+  ec2_vpc_subnet:
+    state: present
+    vpc_id: "{{ vpc.vpc.id }}"
+    region: "{{ region }}"
+    cidr: "{{ subnet_cidr_public }}"
+    map_public: yes
+    aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+    aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+    az: "eu-west-1b"
+    resource_tags: "{{ aws_tag }}"
+  register: subnet_public
+
+- name: associate public_2 subnet to the VPC
+  ec2_vpc_subnet:
+    state: present
+    vpc_id: "{{ vpc.vpc.id }}"
+    region: "{{ region }}"
+    cidr: "{{ subnet_cidr_public_2 }}"
+    map_public: yes
+    aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+    aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+    az: "eu-west-1a"
+    resource_tags: "{{ aws_tag }}"
+  register: subnet_public_2
+
+- name: create IGW
+  ec2_vpc_igw:
+    vpc_id: "{{ vpc.vpc.id }}"
+    region: "{{ region }}"
+    aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+    aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+    state: "present"
+    tags: "{{ aws_tag }}"
+  register: igw
+
+- name: create Route table
+  ec2_vpc_route_table:
+    vpc_id: "{{ vpc.vpc.id }}"
+    region: "{{ region }}"
+    aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+    aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+    tags: "{{ aws_tag }}"
+    subnets:
+      - "{{subnet_public.subnet.id}}"
+      - "{{subnet_public_2.subnet.id}}"
+    routes:
+      - dest: 0.0.0.0/0
+        gateway_id: "{{ igw.gateway_id }}"
+  register: routes_table
+
+- name: create Bastion Security Group
+  ec2_group:
+    name: "Security_Group_Bastion_G"
+    description: "Bastion Sec Group"
+    vpc_id: "{{ vpc.vpc.id }}"
+    region: "{{ region }}"
+    state: "present"
+    aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+    aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+    tags: "{{ aws_tag }}"
+    rules:
+      - proto: tcp
+        from_port: 22
+        to_port: 22
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 5000
+        to_port: 5003
+        cidr_ip: 0.0.0.0/0
+  register: bastion_group
+
+- name: create Private Security Group
+  ec2_group:
+    name: "Security_Group_Private_G"
+    description: "Private Network Sec Group"
+    vpc_id: "{{ vpc.vpc.id }}"
+    region: "{{ region }}"
+    aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+    aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+    tags: "{{ aws_tag }}"
+    state: "present"
+    rules:
+      - proto: tcp
+        from_port: 80
+        to_port: 80
+        cidr_ip: "{{ subnet_public.subnet.cidr_block }}"
+      - proto: tcp
+        from_port: 5000
+        to_port: 5000
+        cidr_ip: "{{ subnet_public.subnet.cidr_block }}"
+      - proto: tcp
+        from_port: 5001
+        to_port: 5001
+        cidr_ip: "{{ subnet_public.subnet.cidr_block }}"
+      - proto: tcp
+        from_port: 5002
+        to_port: 5002
+        cidr_ip: "{{ subnet_public.subnet.cidr_block }}"
+      - proto: tcp
+        from_port: 5003
+        to_port: 5003
+        cidr_ip: "{{ subnet_public.subnet.cidr_block }}"
+  register: private_group
+ 
+#    - name: create Security Group LB
+#      ec2_group:
+#        name: "Security_Group_LB_G"
+#        description: "Load Balancer Security Group"
+#        vpc_id: "{{ vpc.vpc.id }}"
+#        region: "{{ region }}"
+#        aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+#        aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+#        tags: "{{ aws_tag }}"
+#        state: present
+#        rules:
+#          - proto: tcp
+#            from_port: 80
+#            to_port: 80
+#            cidr_ip: 0.0.0.0/0
+#      register: lb_group
+
+#    - name: Create LB 
+#      elb_classic_lb:
+#        name: "LB_G_Classic"
+#        region: "{{ region }}"
+#        aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+#        aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+#        state: present
+#        tags: "{{ aws_tag }}"
+#        zones:
+#          - eu-west-1a
+#          - eu-west-1b
+#        subnets:
+#          - "{{ subnet_public.subnet.id }}"
+#          - "{{ subnet_public_2.subnet.id }}"
+#        listeners:
+#          - protocol: http
+#            load_balancer_port: 80
+#            instance_port: 80
+#        security_group_ids: "{{ lb_group.group_id}}"
+#      delegate_to: localhost
+
+
+- name: create a new ec2 key pair
+  ec2_key:
+    aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+    aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+    name: "{{ keypair_name }}"
+    region: "{{ region }}"
+  register: keypair
+ 
+- name: Copy EC2 Private Key locally so it can be later on used to SSH into the instance
+  copy: content="{{ keypair.key.private_key }}" dest={{ ec2_key_directory }}key.ppk
+  when: keypair.changed == true
+ 
+- name: Create EC2-GET server
+  ec2_instance:
+    name: "EC2_B_G_E"
+    image_id: ami-09693313102a30b2c
+    state: "present"
+    instance_type: t2.micro
+    region: "{{ region }}"
+    security_group: "{{ bastion_group.group_id }}"
+    vpc_subnet_id: "{{ subnet_public.subnet.id }}"
+    wait: yes
+    key_name: "{{ keypair.key.name }}"
+    network:
+      assign_public_ip: true
+    aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+    aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+    tags: "{{ aws_tag }}"
+  register: ec2_instance_get
+
+...
